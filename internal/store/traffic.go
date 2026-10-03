@@ -81,14 +81,23 @@ func (s *Store) SaveTraffic(t *TrafficState) error {
 // worth keeping.
 func (t *TrafficState) PruneFlows(olderThan time.Duration, max int) {
 	cutoff := time.Now().Add(-olderThan)
+
 	for k, f := range t.Flows {
 		if f.Last.Before(cutoff) {
 			delete(t.Flows, k)
 		}
 	}
-	peerCutoff := time.Now().Add(-48 * time.Hour)
+	// Peers: keep only the ones that recur. The single-sample test must not
+	// apply immediately, or a peer is deleted on the sample after the one that
+	// first saw it and can never reach two — which kept this bucket
+	// permanently empty.
+	now := time.Now()
+	peerCutoff := now.Add(-48 * time.Hour)
+	graceCutoff := now.Add(-2 * time.Hour)
 	for k, f := range t.Peers {
-		if f.Samples < 2 || f.Last.Before(peerCutoff) {
+		stale := f.Last.Before(peerCutoff)
+		oneOff := f.Samples < 2 && f.First.Before(graceCutoff)
+		if stale || oneOff {
 			delete(t.Peers, k)
 		}
 	}
