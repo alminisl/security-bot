@@ -69,6 +69,7 @@ serve flags:
   --addr HOST:PORT   listen address (default 127.0.0.1:7777)
   --enable-fixes     allow applying prepared fixes from the dashboard
   --scan-on-start    run an audit as soon as the server starts
+  --sample-every D   traffic sampling interval, e.g. 60s (0 disables)
 
 common flags:
   --state DIR        state directory (default ~/.local/state/sentinel)
@@ -244,6 +245,7 @@ func cmdServe(lg *log.Logger, args []string) int {
 	addr := fs.String("addr", "127.0.0.1:7777", "listen address")
 	enableFixes := fs.Bool("enable-fixes", false, "allow applying fixes from the dashboard")
 	scanOnStart := fs.Bool("scan-on-start", false, "run an audit at startup")
+	sampleEvery := fs.Duration("sample-every", time.Minute, "traffic sampling interval (0 disables)")
 	_ = fs.Parse(args)
 
 	st, err := store.Open(cf.state)
@@ -263,6 +265,8 @@ func cmdServe(lg *log.Logger, args []string) int {
 		Handler:           srv.Handler(),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
+
+	srv.StartSampler(ctx, *sampleEvery)
 
 	if *scanOnStart {
 		go func() {

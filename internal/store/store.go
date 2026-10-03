@@ -87,12 +87,19 @@ type Baseline struct {
 	ImageDigest map[string]string `json:"imageDigest"`
 	ListenPorts []string          `json:"listenPorts"`
 	Containers  []string          `json:"containers"`
+	Devices     []string          `json:"devices"`
+	// Flows maps "proto/remote:port" to how many sample windows it appeared
+	// in, so the traffic watcher can tell a new destination from a regular one.
+	Flows    map[string]int   `json:"flows"`
+	NetTotal map[string]int64 `json:"netTotal"`
 }
 
 func (s *Store) Baseline() *Baseline {
 	b := &Baseline{
 		FileChanges: map[string]int{},
 		ImageDigest: map[string]string{},
+		Flows:       map[string]int{},
+		NetTotal:    map[string]int64{},
 	}
 	_ = s.readJSON("baseline.json", b)
 	if b.FileChanges == nil {
@@ -100,6 +107,12 @@ func (s *Store) Baseline() *Baseline {
 	}
 	if b.ImageDigest == nil {
 		b.ImageDigest = map[string]string{}
+	}
+	if b.Flows == nil {
+		b.Flows = map[string]int{}
+	}
+	if b.NetTotal == nil {
+		b.NetTotal = map[string]int64{}
 	}
 	return b
 }

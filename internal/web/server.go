@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/alminisl/security-bot/internal/audit"
+	"github.com/alminisl/security-bot/internal/collect"
 	"github.com/alminisl/security-bot/internal/model"
 	"github.com/alminisl/security-bot/internal/notify"
 	"github.com/alminisl/security-bot/internal/store"
@@ -37,6 +38,44 @@ type Server struct {
 
 func NewServer(st *store.Store, opts audit.Options, lg *log.Logger, allowFixes bool, sinks []notify.Sink) *Server {
 	return &Server{store: st, opts: opts, log: lg, fixes: allowFixes, sinks: sinks}
+}
+
+// StartSampler runs the traffic sampler on a ticker for as long as the server
+// lives. Traffic monitoring only works if observation is continuous — a daily
+// snapshot misses anything intermittent, which is exactly what beaconing is.
+func (s *Server) StartSampler(ctx context.Context, every time.Duration) {
+	if every <= 0 {
+		return
+	}
+	go func() {
+		// A first sample immediately, so a fresh install has data within a
+		// minute rather than at the next tick.
+		s.sampleOnce(ctx)
+		t := time.NewTicker(every)
+		defer t.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-t.C:
+				s.sampleOnce(ctx)
+			}
+		}
+	}()
+	s.log.Printf("traffic sampler running every %s", every)
+}
+
+func (s *Server) sampleOnce(ctx context.Context) {
+	sctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	defer cancel()
+	containers, err := collect.Inventory(sctx, 30*time.Second)
+	if err != nil {
+		s.log.Printf("sampler: inventory: %v", err)
+		return
+	}
+	if err := collect.Sample(sctx, s.store, containers); err != nil {
+		s.log.Printf("sampler: %v", err)
+	}
 }
 
 func (s *Server) Handler() http.Handler {

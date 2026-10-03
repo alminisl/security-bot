@@ -57,9 +57,11 @@ func (s Severity) Rank() int {
 type Scope string
 
 const (
-	ScopeProject Scope = "project"
-	ScopeMachine Scope = "machine"
-	ScopeNetwork Scope = "network"
+	ScopeProject  Scope = "project"
+	ScopeMachine  Scope = "machine"
+	ScopeNetwork  Scope = "network"
+	ScopePackages Scope = "packages"
+	ScopeTraffic  Scope = "traffic"
 )
 
 // Finding is one security observation. ID is derived from the agent, scope key
@@ -130,6 +132,66 @@ type Container struct {
 	Watchtower  bool     `json:"watchtower"`
 }
 
+// PackageItem is one installed package.
+type PackageItem struct {
+	Name     string `json:"name"`
+	Version  string `json:"version"`
+	Latest   string `json:"latest,omitempty"`
+	Source   string `json:"source,omitempty"`
+	Outdated bool   `json:"outdated,omitempty"`
+	Security bool   `json:"security,omitempty"` // a security update is pending
+}
+
+// PackageSet is everything one package manager reports.
+type PackageSet struct {
+	Manager  string        `json:"manager"`
+	Label    string        `json:"label"`
+	Count    int           `json:"count"` // total known, which may exceed len(Items)
+	Shown    string        `json:"shown"` // what Items actually contains
+	Outdated int           `json:"outdated"`
+	Items    []PackageItem `json:"items,omitempty"`
+	Note     string        `json:"note,omitempty"`
+}
+
+// Device is one machine seen on the local network or the tailnet.
+type Device struct {
+	Name     string `json:"name"`
+	Addr     string `json:"addr"`
+	MAC      string `json:"mac,omitempty"`
+	OS       string `json:"os,omitempty"`
+	Source   string `json:"source"` // tailnet | arp | sweep
+	Online   bool   `json:"online"`
+	LastSeen string `json:"lastSeen,omitempty"`
+	Note     string `json:"note,omitempty"`
+	New      bool   `json:"new,omitempty"`
+}
+
+// Flow is traffic to one remote endpoint, rolled up by the sampler.
+type Flow struct {
+	Remote    string `json:"remote"`
+	Port      string `json:"port"`
+	Host      string `json:"host,omitempty"` // reverse DNS, when resolvable
+	Proto     string `json:"proto"`
+	Samples   int    `json:"samples"` // times seen across sampling runs
+	FirstSeen string `json:"firstSeen"`
+	LastSeen  string `json:"lastSeen"`
+	New       bool   `json:"new,omitempty"`
+	// Peer marks a connection that looks peer-to-peer rather than to a
+	// service. Shown for context, never alerted on.
+	Peer bool `json:"peer,omitempty"`
+}
+
+// ContainerTraffic is per-container byte counters and their drift.
+type ContainerTraffic struct {
+	Name     string  `json:"name"`
+	RxBytes  int64   `json:"rxBytes"`
+	TxBytes  int64   `json:"txBytes"`
+	RxDelta  int64   `json:"rxDelta"`
+	TxDelta  int64   `json:"txDelta"`
+	Baseline int64   `json:"baseline"` // mean total delta per sample window
+	Spike    float64 `json:"spike"`    // multiple of baseline, 0 when unknown
+}
+
 // AgentRun records one agent's execution: the roster on the dashboard is built
 // from these.
 type AgentRun struct {
@@ -156,23 +218,29 @@ type ScopeScore struct {
 
 // Scan is one complete audit, and the single object the web UI renders.
 type Scan struct {
-	ID          string            `json:"id"`
-	StartedAt   time.Time         `json:"startedAt"`
-	DurMS       int64             `json:"durationMs"`
-	Score       int               `json:"score"`
-	Counts      map[string]int    `json:"counts"`
-	Findings    []Finding         `json:"findings"`
-	Containers  []Container       `json:"containers"`
-	Projects    []ScopeScore      `json:"projects"`
-	Machine     ScopeScore        `json:"machine"`
-	Network     ScopeScore        `json:"network"`
-	Agents      []AgentRun        `json:"agents"`
-	Report      string            `json:"report"`
-	Suggestions []Suggestion      `json:"suggestions"`
-	Alerts      []Finding         `json:"alerts"`
-	Resolved    int               `json:"resolved"`
-	NewCount    int               `json:"newCount"`
-	Facts       map[string]string `json:"facts,omitempty"`
+	ID          string             `json:"id"`
+	StartedAt   time.Time          `json:"startedAt"`
+	DurMS       int64              `json:"durationMs"`
+	Score       int                `json:"score"`
+	Counts      map[string]int     `json:"counts"`
+	Findings    []Finding          `json:"findings"`
+	Containers  []Container        `json:"containers"`
+	Projects    []ScopeScore       `json:"projects"`
+	Machine     ScopeScore         `json:"machine"`
+	Network     ScopeScore         `json:"network"`
+	Packages    ScopeScore         `json:"packages"`
+	Traffic     ScopeScore         `json:"traffic"`
+	Inventory   []PackageSet       `json:"inventory,omitempty"`
+	Devices     []Device           `json:"devices,omitempty"`
+	Flows       []Flow             `json:"flows,omitempty"`
+	NetUsage    []ContainerTraffic `json:"netUsage,omitempty"`
+	Agents      []AgentRun         `json:"agents"`
+	Report      string             `json:"report"`
+	Suggestions []Suggestion       `json:"suggestions"`
+	Alerts      []Finding          `json:"alerts"`
+	Resolved    int                `json:"resolved"`
+	NewCount    int                `json:"newCount"`
+	Facts       map[string]string  `json:"facts,omitempty"`
 }
 
 func CountBySeverity(fs []Finding) map[string]int {

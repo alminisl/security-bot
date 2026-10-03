@@ -59,6 +59,9 @@ func Run(ctx context.Context, st *store.Store, opt Options) (*model.Scan, error)
 		Timeout:    opt.Timeout,
 		DeepScan:   opt.Deep,
 	}
+	if prev, err := st.Latest(); err == nil {
+		env.Since = prev.StartedAt
+	}
 
 	for _, ag := range collect.All() {
 		run := model.AgentRun{Name: ag.Name(), Title: ag.Title(), Role: ag.Role(), Status: "ok"}
@@ -78,6 +81,10 @@ func Run(ctx context.Context, st *store.Store, opt Options) (*model.Scan, error)
 		run.Findings = len(res.Findings)
 		sc.Findings = append(sc.Findings, res.Findings...)
 		sc.Suggestions = append(sc.Suggestions, res.Suggestions...)
+		sc.Inventory = append(sc.Inventory, res.Inventory...)
+		sc.Devices = append(sc.Devices, res.Devices...)
+		sc.Flows = append(sc.Flows, res.Flows...)
+		sc.NetUsage = append(sc.NetUsage, res.NetUsage...)
 		sc.Agents = append(sc.Agents, run)
 		logf("agent %s: %s (%d findings, %dms)", ag.Name(), run.Status, len(res.Findings), run.DurMS)
 	}
@@ -117,7 +124,7 @@ func Run(ctx context.Context, st *store.Store, opt Options) (*model.Scan, error)
 	sc.Counts = model.CountBySeverity(sc.Findings)
 	sc.Score = model.ScoreOf(sc.Findings)
 	sc.Alerts = model.Alerts(sc.Findings)
-	sc.Projects, sc.Machine, sc.Network = buildScopes(sc.Findings, containers)
+	sc.Projects, sc.Machine, sc.Network, sc.Packages, sc.Traffic = buildScopes(sc.Findings, containers)
 	sc.Suggestions = append(sc.Suggestions, derivedSuggestions(sc)...)
 	model.SortSuggestions(sc.Suggestions)
 	sc.DurMS = time.Since(started).Milliseconds()
@@ -125,6 +132,12 @@ func Run(ctx context.Context, st *store.Store, opt Options) (*model.Scan, error)
 	sc.Facts["containers"] = fmt.Sprintf("%d", len(containers))
 	sc.Facts["projects"] = fmt.Sprintf("%d", len(sc.Projects))
 	sc.Facts["mode"] = map[bool]string{true: "full", false: "quick"}[opt.Deep]
+	pkgTotal := 0
+	for _, set := range sc.Inventory {
+		pkgTotal += set.Count
+	}
+	sc.Facts["packages"] = fmt.Sprintf("%d", pkgTotal)
+	sc.Facts["devices"] = fmt.Sprintf("%d", len(sc.Devices))
 
 	// The written report comes last: it summarises everything above. A 4B
 	// model generating 300 tokens on CPU takes 90s or more, so the budget is
@@ -173,7 +186,7 @@ func dedupe(fs []model.Finding) []model.Finding {
 }
 
 // buildScopes splits findings into per-project, machine and network ratings.
-func buildScopes(fs []model.Finding, cs []model.Container) ([]model.ScopeScore, model.ScopeScore, model.ScopeScore) {
+func buildScopes(fs []model.Finding, cs []model.Container) ([]model.ScopeScore, model.ScopeScore, model.ScopeScore, model.ScopeScore, model.ScopeScore) {
 	byKey := map[string][]model.Finding{}
 	for _, f := range fs {
 		byKey[string(f.Scope)+"/"+f.ScopeKey] = append(byKey[string(f.Scope)+"/"+f.ScopeKey], f)
@@ -216,7 +229,9 @@ func buildScopes(fs []model.Finding, cs []model.Container) ([]model.ScopeScore, 
 
 	machine := mk(model.ScopeMachine, "machine")
 	network := mk(model.ScopeNetwork, "network")
-	return out, machine, network
+	packages := mk(model.ScopePackages, "packages")
+	traffic := mk(model.ScopeTraffic, "traffic")
+	return out, machine, network, packages, traffic
 }
 
 // derivedSuggestions adds advice that comes from the shape of the whole scan

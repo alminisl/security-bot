@@ -21,13 +21,19 @@ type Env struct {
 	Store      *store.Store
 	Base       *store.Baseline
 	Timeout    time.Duration
-	DeepScan   bool // allow slow work (registry calls, CVE scans)
+	DeepScan   bool      // allow slow work (registry calls, CVE scans)
+	Since      time.Time // start of the previous scan; zero on the first run
 }
 
-// Result is what an agent reports back.
+// Result is what an agent reports back. Beyond findings, an agent may return
+// inventory the dashboard lists whether or not anything is wrong with it.
 type Result struct {
 	Findings    []model.Finding
 	Suggestions []model.Suggestion
+	Inventory   []model.PackageSet
+	Devices     []model.Device
+	Flows       []model.Flow
+	NetUsage    []model.ContainerTraffic
 	Checks      int
 	Message     string
 	Unavailable bool // a required external tool is missing; not an error
@@ -51,6 +57,9 @@ func All() []Agent {
 		VulnScanner{},
 		MachineAuditor{},
 		NetworkAuditor{},
+		PackageAuditor{},
+		DeviceAuditor{},
+		TrafficWatcher{},
 	}
 }
 
