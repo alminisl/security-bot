@@ -127,6 +127,12 @@
 }
 
 *, *::before, *::after { box-sizing: border-box; }
+
+/* The hidden attribute gets display:none from the UA stylesheet only, which any
+   author `display` declaration outranks — and several rules below set one. The
+   JS hides panels, finding bodies, rows and buttons with this attribute, so it
+   has to be authoritative or nothing ever hides. */
+[hidden] { display: none !important; }
 :where(.hero, .section, .alert, .finding, .suggestion, .agent, .tile) > * { min-width: 0; }
 
 body {
