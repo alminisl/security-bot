@@ -98,7 +98,6 @@ type stateResponse struct {
 	Progress string               `json:"progress,omitempty"`
 	Error    string               `json:"error,omitempty"`
 	Fixes    bool                 `json:"fixesEnabled"`
-	Now      time.Time            `json:"now"`
 }
 
 func (s *Server) handleState(w http.ResponseWriter, r *http.Request) {
@@ -111,7 +110,6 @@ func (s *Server) handleState(w http.ResponseWriter, r *http.Request) {
 		Progress: s.progress,
 		Error:    s.lastErr,
 		Fixes:    s.fixes,
-		Now:      time.Now(),
 	}
 	s.mu.Unlock()
 	if err != nil && sc == nil {

@@ -2,125 +2,234 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Sentinel — Security Audit</title>
-<meta name="color-scheme" content="dark light">
 <meta name="description" content="Security audit dashboard for a self-hosted Docker host.">
+<!-- Theme before first paint, or a saved preference flashes the OS theme first. -->
+<script>try{var t=localStorage.getItem('sentinel-theme');if(t==='dark'||t==='light')document.documentElement.dataset.theme=t}catch(e){}</script>
 <link rel="stylesheet" href="style.css">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🛡️</text></svg>">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M8 1.5 13 3.2v4.3c0 3.1-2 5.6-5 7-3-1.4-5-3.9-5-7V3.2L8 1.5Z' fill='none' stroke='%232f6fe0' stroke-width='1.6'/%3E%3C/svg%3E">
 </head>
 <body>
+<a class="skip" href="#main">Skip to content</a>
+
 <header class="topbar">
   <div class="brand">
-    <span class="shield" aria-hidden="true">🛡</span>
+    <svg width="22" height="22" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+      <path d="M8 1.5 13 3.2v4.3c0 3.1-2 5.6-5 7-3-1.4-5-3.9-5-7V3.2L8 1.5Z"
+            fill="none" stroke="currentColor" stroke-width="1.5"/>
+    </svg>
     <div>
       <h1>Sentinel</h1>
       <p class="sub" id="subtitle">loading…</p>
     </div>
   </div>
   <div class="topbar-right">
-    <div class="rating" id="rating" title="Overall rating out of 100">
-      <span class="rating-num" id="rating-num">—</span>
-      <span class="rating-label">overall</span>
-    </div>
+    <span class="mode-chip" id="mode-chip" data-mode="readonly">Read-only</span>
     <button id="btn-quick" class="btn">Quick scan</button>
     <button id="btn-full" class="btn btn-primary">Full scan</button>
-    <button id="btn-theme" class="btn btn-icon" title="Toggle theme">◐</button>
+    <button id="btn-theme" class="btn btn-icon" aria-pressed="false">
+      <svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+        <circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" stroke-width="1.4"/>
+        <path d="M8 2a6 6 0 0 0 0 12Z" fill="currentColor"/>
+      </svg>
+      <span class="vh" id="theme-label">Switch to light theme</span>
+    </button>
   </div>
 </header>
 
-<main>
-  <div id="banner" class="banner hidden"></div>
+<main id="main">
+  <noscript><p class="banner err">This dashboard needs JavaScript. Run <code>sentinel scan</code> in a terminal for the same data as text.</p></noscript>
 
-  <!-- React now -->
-  <section id="alerts-section" class="alerts hidden">
+  <div id="banner" class="banner" role="status" aria-live="polite" hidden></div>
+
+  <!-- Persistent shell: the rating and the alarm stay visible on every tab. -->
+  <section class="hero" aria-labelledby="hero-h">
+    <h2 class="vh" id="hero-h">Overall rating</h2>
+    <div class="hero-score">
+      <p class="hero-num" id="overall-num">—</p>
+      <div class="hero-side">
+        <span class="band" id="overall-band" data-band="">—</span>
+        <p class="hero-sub" id="overall-sub">overall, out of 100</p>
+        <p class="hero-delta" id="overall-delta"></p>
+      </div>
+      <svg class="spark" id="overall-spark" viewBox="0 0 120 36" preserveAspectRatio="none"
+           role="img" aria-labelledby="spark-cap"></svg>
+      <p class="vh" id="spark-cap">Overall rating across recent scans.</p>
+    </div>
+    <div class="meter" id="overall-meter" data-band="">
+      <div class="meter-fill"></div>
+      <i class="meter-tick" style="--at:35"></i>
+      <i class="meter-tick" style="--at:60"></i>
+      <i class="meter-tick" style="--at:85"></i>
+    </div>
+    <div class="tiles" id="tiles"></div>
+  </section>
+
+  <section class="alerts" id="alerts-section" aria-labelledby="alerts-h" hidden>
     <div class="alerts-head">
-      <h2><span class="dot dot-critical"></span> React now</h2>
+      <h2 id="alerts-h">React now</h2>
       <span class="alerts-count" id="alerts-count"></span>
     </div>
-    <div id="alerts" class="alerts-list"></div>
+    <div class="alerts-list" id="alerts"></div>
   </section>
 
-  <!-- Auditor's note -->
-  <section class="card report" id="report-card">
-    <div class="report-avatar" aria-hidden="true">🕵</div>
-    <div>
-      <h3>Auditor's note</h3>
-      <p id="report">No scan yet. Run a full scan to generate the first report.</p>
+  <section class="report" aria-labelledby="report-h">
+    <h3 id="report-h">Auditor's note</h3>
+    <p id="report">No scan yet. Run a full scan to generate the first report.</p>
+  </section>
+
+  <!-- Detail views -->
+  <div class="tabs">
+    <div class="tabstrip" role="tablist" aria-label="Audit categories" id="tablist">
+      <button role="tab" id="tab-overview" aria-controls="panel-overview" aria-selected="true" tabindex="0" data-tab="overview">Overview</button>
+      <button role="tab" id="tab-docker" aria-controls="panel-docker" aria-selected="false" tabindex="-1" data-tab="docker">Docker</button>
+      <button role="tab" id="tab-machine" aria-controls="panel-machine" aria-selected="false" tabindex="-1" data-tab="machine">Machine</button>
+      <button role="tab" id="tab-network" aria-controls="panel-network" aria-selected="false" tabindex="-1" data-tab="network">Network</button>
+      <button role="tab" id="tab-map" aria-controls="panel-map" aria-selected="false" tabindex="-1" data-tab="map">Map</button>
+      <button role="tab" id="tab-packages" aria-controls="panel-packages" aria-selected="false" tabindex="-1" data-tab="packages">Packages</button>
+      <button role="tab" id="tab-traffic" aria-controls="panel-traffic" aria-selected="false" tabindex="-1" data-tab="traffic">Traffic</button>
     </div>
-  </section>
 
-  <!-- Three domains -->
-  <section class="domains">
-    <article class="card domain" id="domain-projects">
-      <header><h3>Projects</h3><span class="score" id="projects-score">—</span></header>
-      <p class="domain-sub" id="projects-sub">—</p>
-      <div class="bars" id="projects-bars"></div>
-    </article>
-    <article class="card domain" id="domain-machine">
-      <header><h3>Machine</h3><span class="score" id="machine-score">—</span></header>
-      <p class="domain-sub" id="machine-sub">—</p>
-      <div class="bars" id="machine-bars"></div>
-    </article>
-    <article class="card domain" id="domain-network">
-      <header><h3>Network</h3><span class="score" id="network-score">—</span></header>
-      <p class="domain-sub" id="network-sub">—</p>
-      <div class="bars" id="network-bars"></div>
-    </article>
-  </section>
-
-  <!-- Agents -->
-  <section class="card">
-    <div class="card-head">
-      <h3>Connected agents</h3>
-      <span class="muted" id="agents-sub"></span>
-    </div>
-    <div class="agents" id="agents"></div>
-  </section>
-
-  <!-- Suggestions -->
-  <section class="card" id="suggestions-card">
-    <div class="card-head">
-      <h3>Suggestions</h3>
-      <span class="muted">what to do next, highest value first</span>
-    </div>
-    <ol class="suggestions" id="suggestions"></ol>
-  </section>
-
-  <!-- Projects detail -->
-  <section class="card">
-    <div class="card-head">
-      <h3>Security by project</h3>
-      <span class="muted" id="projects-count"></span>
-    </div>
-    <div class="project-grid" id="project-grid"></div>
-  </section>
-
-  <!-- Findings -->
-  <section class="card">
-    <div class="card-head">
-      <h3>Findings</h3>
-      <div class="filters" id="filters">
-        <input type="search" id="search" placeholder="Filter by text…" autocomplete="off">
-        <select id="sev-filter">
-          <option value="">All severities</option>
-          <option value="critical">Critical</option>
-          <option value="high">High</option>
-          <option value="medium">Medium</option>
-          <option value="low">Low</option>
-          <option value="info">Info</option>
-        </select>
-        <select id="scope-filter"><option value="">All scopes</option></select>
-        <label class="check"><input type="checkbox" id="new-only"> New only</label>
+    <section role="tabpanel" id="panel-overview" aria-labelledby="tab-overview" tabindex="0">
+      <div class="section">
+        <div class="section-head">
+          <h3>Connected agents</h3>
+          <span class="muted" id="agents-sub"></span>
+        </div>
+        <div class="agents" id="agents"></div>
       </div>
-    </div>
-    <div id="findings" class="findings"></div>
-  </section>
+      <div class="section" id="suggestions-section">
+        <div class="section-head">
+          <h3>Suggestions</h3>
+          <span class="muted">what to do next, highest value first</span>
+        </div>
+        <ol class="suggestions" id="suggestions"></ol>
+      </div>
+    </section>
 
-  <footer class="foot">
-    <span id="foot-info"></span>
-    <span class="muted">Audits are read-only unless started with <code>--enable-fixes</code>.</span>
-  </footer>
+    <section role="tabpanel" id="panel-docker" aria-labelledby="tab-docker" tabindex="0" hidden>
+      <div class="section">
+        <div class="section-head">
+          <h3>Security by project</h3>
+          <span class="muted" id="projects-count"></span>
+        </div>
+        <div class="project-grid" id="project-grid"></div>
+      </div>
+      <div class="section" data-findings="docker"></div>
+    </section>
+
+    <section role="tabpanel" id="panel-machine" aria-labelledby="tab-machine" tabindex="0" hidden>
+      <div class="section" data-findings="machine"></div>
+    </section>
+
+    <section role="tabpanel" id="panel-network" aria-labelledby="tab-network" tabindex="0" hidden>
+      <div class="section">
+        <div class="section-head">
+          <h3>Devices</h3>
+          <span class="muted" id="devices-sub"></span>
+        </div>
+        <div class="table-wrap">
+          <table class="data" id="devices-table">
+            <caption class="vh">Devices seen on the tailnet and the local network</caption>
+            <thead><tr>
+              <th scope="col">Device</th><th scope="col">Address</th>
+              <th scope="col">Source</th><th scope="col">Note</th><th scope="col">State</th>
+            </tr></thead>
+            <tbody id="devices-rows"></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="section" data-findings="network"></div>
+    </section>
+
+    <section role="tabpanel" id="panel-map" aria-labelledby="tab-map" tabindex="0" hidden>
+      <div class="section">
+        <div class="section-head">
+          <h3>Network map</h3>
+          <span class="muted">devices, this host and its containers — select a node for detail</span>
+        </div>
+        <div class="map-wrap">
+          <svg id="map" viewBox="0 0 1000 620" role="group" aria-label="Network and container map"></svg>
+          <div class="map-detail" id="map-detail">Select a node to see what was found on it.</div>
+          <div class="map-legend">
+            <span><i class="dot-critical" style="background:var(--sev-critical-mark)"></i> critical</span>
+            <span><i style="background:var(--sev-high-mark)"></i> high</span>
+            <span><i style="background:var(--sev-medium-mark)"></i> medium</span>
+            <span><i style="background:var(--sev-low-mark)"></i> low</span>
+            <span><i style="background:var(--sev-good-mark)"></i> clean</span>
+            <span><i style="background:var(--surface-3)"></i> offline</span>
+            <span><i style="background:var(--sev-high-mark);border-radius:0;height:2px;width:14px"></i> LAN-exposed port</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section role="tabpanel" id="panel-packages" aria-labelledby="tab-packages" tabindex="0" hidden>
+      <div class="section">
+        <div class="section-head">
+          <h3>Installed packages</h3>
+          <div class="filters">
+            <input type="search" id="pkg-search" aria-label="Filter packages by name" placeholder="Filter packages…" autocomplete="off">
+            <select id="pkg-manager" aria-label="Filter by package manager"><option value="">All managers</option></select>
+            <label class="check"><input type="checkbox" id="pkg-outdated" checked> Needs attention only</label>
+          </div>
+        </div>
+        <p class="muted" id="pkg-summary"></p>
+        <div class="table-wrap">
+          <table class="data" id="pkg-table">
+            <caption class="vh">Installed packages across every package manager</caption>
+            <thead><tr>
+              <th scope="col">Package</th><th scope="col">Manager</th>
+              <th scope="col" class="n">Installed</th><th scope="col" class="n">Latest</th>
+              <th scope="col">Status</th>
+            </tr></thead>
+            <tbody id="pkg-rows"></tbody>
+          </table>
+        </div>
+        <button class="btn btn-sm" id="pkg-more" hidden></button>
+      </div>
+      <div class="section" data-findings="packages"></div>
+    </section>
+
+    <section role="tabpanel" id="panel-traffic" aria-labelledby="tab-traffic" tabindex="0" hidden>
+      <div class="section">
+        <div class="section-head">
+          <h3>Container volume</h3>
+          <span class="muted" id="usage-sub"></span>
+        </div>
+        <div class="table-wrap">
+          <table class="data" id="usage-table">
+            <caption class="vh">Network bytes moved per container</caption>
+            <thead><tr>
+              <th scope="col">Container</th><th scope="col" class="n">Received</th>
+              <th scope="col" class="n">Sent</th><th scope="col" class="n">Since last sample</th>
+              <th scope="col">State</th>
+            </tr></thead>
+            <tbody id="usage-rows"></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="section">
+        <div class="section-head">
+          <h3>Outbound destinations</h3>
+          <span class="muted" id="flows-sub"></span>
+        </div>
+        <div class="table-wrap">
+          <table class="data" id="flows-table">
+            <caption class="vh">Remote endpoints this host has connected to</caption>
+            <thead><tr>
+              <th scope="col">Endpoint</th><th scope="col">Resolved name</th>
+              <th scope="col" class="n">Port</th><th scope="col" class="n">Seen</th>
+              <th scope="col">State</th>
+            </tr></thead>
+            <tbody id="flows-rows"></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="section" data-findings="traffic"></div>
+    </section>
+  </div>
 </main>
 
 <script src="app.js"></script>
