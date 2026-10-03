@@ -14,7 +14,7 @@ sentinel serve     # dashboard on http://127.0.0.1:7777
 
 ## What it checks
 
-Seven agents run on every scan. Each one owns a slice of the system and reports
+Ten agents run on every scan. Each one owns a slice of the system and reports
 findings plus suggested actions.
 
 | Agent | What it looks at |
@@ -26,6 +26,9 @@ findings plus suggested actions.
 | **Vulnerability Scanner** | CVEs in image contents, via Trivy. Optional — reports itself unavailable rather than failing |
 | **Machine Auditor** | Pending security updates, reboot-required, unattended-upgrades, firewall, SSH config, Docker daemon config, disk headroom |
 | **Network Auditor** | Every listening socket, which are LAN-reachable, unauthenticated services, and newly opened ports since the last scan |
+| **Package Auditor** | Every package manager in use — apt, npm (global and per-project), pipx, snap, Go binaries. Names the packages with security updates pending, and flags third-party or unsigned apt repositories |
+| **Device Auditor** | Tailnet peers (offline-but-still-authorised devices, key expiry disabled, exit-node offers) and local network devices |
+| **Traffic Watcher** | Outbound connections sampled continuously; new external destinations and per-container volume spikes |
 
 ### On "is my system compromised?"
 
@@ -34,6 +37,62 @@ does is establish a baseline and report deviation from it: a new binary in
 `/usr/bin` inside a container, an image digest that changed when you did not
 change it, a port that opened on its own. That catches realistic compromises.
 It is not a guarantee, and this README will not pretend otherwise.
+
+## Packages
+
+Everything installed should be visible somewhere, so the scan carries the
+inventory itself rather than only findings about it: apt, npm globals and
+project trees, pipx, snap and Go binaries, with versions and what is behind.
+
+Of apt's ~2300 packages only the manually installed ones are listed. The rest
+are dependencies pulled in by those, and listing them all is noise rather than
+information.
+
+Project dependency audits run against lockfiles that already exist. The agent
+will not install anything in your projects to make an audit possible.
+
+## Traffic
+
+Traffic monitoring needs continuous observation — a daily snapshot cannot see
+an intermittent connection, which is exactly what beaconing looks like. So the
+sampling runs inside the dashboard process:
+
+```sh
+sentinel serve --sample-every 60s    # default
+```
+
+Each sample records established outbound connections and per-container byte
+counters. The daily scan then reports new external destinations and containers
+that moved far more data than their own rolling average.
+
+**Service traffic is tracked separately from peer-to-peer.** A host running a
+BitTorrent client contacts thousands of addresses on ephemeral ports, each once.
+Counting those as "new destinations" buries the signal completely, so only
+connections to recognisable service ports raise findings; peer-like connections
+are kept separately, pruned hard, and shown for context only.
+
+Two honest limits:
+
+- **This machine only sees its own traffic.** On a switched network, other
+  devices' traffic never reaches it. Seeing theirs means being in the path — as
+  their DNS resolver, as the Tailscale exit node, or via a switch mirror port.
+- **No payload inspection.** This is connection-level, not an IDS. For
+  signature-based detection you want Suricata or Zeek alongside it.
+
+## Other machines
+
+The Device Auditor reports your tailnet peers using `tailscale status --json`,
+which needs no privileges. The useful finding is a device offline for weeks
+that still holds a valid key — access you are no longer aware of.
+
+Local network discovery prefers an active sweep and falls back to the ARP
+cache. On a Docker host that cache is almost entirely bridge interfaces, so it
+is filtered to the interface facing your default route. For a real device
+inventory, install a scanner:
+
+```sh
+sudo apt-get install -y nmap
+```
 
 ## Scoring
 
