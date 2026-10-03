@@ -334,8 +334,16 @@ document.addEventListener('click', (ev) => {
 
 $('btn-quick').onclick = () => startScan('quick');
 $('btn-full').onclick = () => startScan('full');
+// With no explicit choice the page follows the OS, so the first click has to
+// toggle away from what is actually on screen — not from a hardcoded default.
+function effectiveTheme() {
+  const set = document.documentElement.dataset.theme;
+  if (set === 'dark' || set === 'light') return set;
+  return window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+}
+
 $('btn-theme').onclick = () => {
-  const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+  const next = effectiveTheme() === 'dark' ? 'light' : 'dark';
   document.documentElement.dataset.theme = next;
   try { localStorage.setItem('sentinel-theme', next); } catch {}
 };

@@ -111,9 +111,23 @@ sudo apt-get install -y trivy   # see the suggestion in the dashboard for the re
 ## Exposure
 
 The dashboard is a map of exactly where this machine is weak, so it binds to
-`127.0.0.1` and stays there. Reach it over Tailscale or behind an authenticating
-reverse proxy. There is no authentication in the server itself — do not publish
-it.
+`127.0.0.1` and stays there. There is no authentication in the server itself —
+do not publish it on the LAN or the internet.
+
+To reach it from another machine, either bind it to this host's Tailscale
+address, which is private and authenticated:
+
+```sh
+sentinel serve --addr "$(tailscale ip -4 | head -1):7777"
+```
+
+or leave it on localhost and tunnel in over SSH:
+
+```sh
+ssh -L 7777:localhost:7777 you@your-server   # then open http://localhost:7777
+```
+
+`deploy/install.sh` detects a tailnet and offers to bind there for you.
 
 Fixes are disabled unless you pass `--enable-fixes`, and even then the server
 only ever runs a command stored on a finding the scan itself produced. A command

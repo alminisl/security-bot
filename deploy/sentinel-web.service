@@ -1,15 +1,23 @@
 [Unit]
 Description=Sentinel security dashboard
 Documentation=https://github.com/alminisl/security-bot
-After=docker.service network-online.target
+After=docker.service network-online.target tailscaled.service
 Wants=docker.service
 
 [Service]
 Type=simple
-# Bound to localhost by default. Reach it over Tailscale or a reverse proxy
-# rather than publishing it: the dashboard describes exactly where this
-# machine is weak.
-ExecStart=%h/Projects/security-bot/sentinel serve --addr 127.0.0.1:7777
+# Bound to localhost by default. The dashboard describes exactly where this
+# machine is weak, so do not publish it on the LAN.
+#
+# To reach it from another of your devices, bind it to this host's Tailscale
+# address instead — the tailnet is authenticated and private:
+#   Environment=SENTINEL_ADDR=100.107.207.69:7777
+# Or leave it on localhost and tunnel: ssh -L 7777:localhost:7777 <this host>
+Environment=SENTINEL_ADDR=127.0.0.1:7777
+ExecStart=/bin/sh -c '%h/Projects/security-bot/sentinel serve --addr "$SENTINEL_ADDR"'
+# After=tailscaled matters when binding to a tailnet address, which does not
+# exist until tailscaled has brought the interface up.
+
 Restart=on-failure
 RestartSec=10s
 

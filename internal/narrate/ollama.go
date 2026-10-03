@@ -76,6 +76,14 @@ Write calmly and directly, like a colleague who has just finished reading the re
 var thinkBlock = regexp.MustCompile(`(?s)<think>.*?</think>|(?s)<thinking>.*?</thinking>`)
 
 func (o *Ollama) Report(ctx context.Context, sc *model.Scan) (string, error) {
+	// Check reachability first so an absent ollama fails in seconds rather
+	// than holding the scan open for the full client timeout.
+	probe, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+	if !o.Available(probe) {
+		return "", fmt.Errorf("ollama not reachable at %s", o.BaseURL)
+	}
+
 	body, err := json.Marshal(genRequest{
 		Model:  o.Model,
 		System: systemPrompt,

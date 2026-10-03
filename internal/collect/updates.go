@@ -100,7 +100,7 @@ func (a UpdateWatcher) Run(ctx context.Context, env *Env) (Result, error) {
 			short(local), short(got.remote), strings.Join(names, ", "))
 		if managed && wtPresent {
 			sev = model.SevLow
-			detail += " Watchtower manages this container and should pull it on its next run (04:00)."
+			detail += " Watchtower manages this container and should pull it on its next scheduled run."
 		}
 		r.Findings = append(r.Findings, model.NewFinding(model.Finding{
 			Agent:    a.Name(),

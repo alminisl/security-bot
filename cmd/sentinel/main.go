@@ -104,20 +104,15 @@ func envOr(key, def string) string {
 	return def
 }
 
-// narrator returns the ollama client if it is actually reachable, so a missing
-// or stopped ollama degrades to the factual fallback report instead of waiting.
-func (c *commonFlags) narrator(ctx context.Context, lg *log.Logger) audit.Narrator {
+// narrator returns the ollama client, which probes reachability on each report
+// and errors quickly when ollama is absent. The audit then falls back to a
+// factual summary. Deliberately not probed here: `serve` is long-lived and may
+// start before ollama is up.
+func (c *commonFlags) narrator(lg *log.Logger) audit.Narrator {
 	if c.noLLM {
 		return nil
 	}
-	o := narrate.NewOllama(c.ollama, c.model)
-	probe, cancel := context.WithTimeout(ctx, 3*time.Second)
-	defer cancel()
-	if !o.Available(probe) {
-		lg.Printf("ollama not reachable at %s — using factual summary", o.BaseURL)
-		return nil
-	}
-	return o
+	return narrate.NewOllama(c.ollama, c.model)
 }
 
 func (c *commonFlags) sinks() []notify.Sink {
@@ -149,7 +144,7 @@ func cmdScan(lg *log.Logger, args []string) int {
 	sc, err := audit.Run(ctx, st, audit.Options{
 		Deep:     !*quick,
 		Timeout:  30 * time.Second,
-		Narrator: cf.narrator(ctx, lg),
+		Narrator: cf.narrator(lg),
 		Log:      lg,
 	})
 	if err != nil {
@@ -260,7 +255,7 @@ func cmdServe(lg *log.Logger, args []string) int {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	opts := audit.Options{Deep: true, Timeout: 30 * time.Second, Narrator: cf.narrator(ctx, lg), Log: lg}
+	opts := audit.Options{Deep: true, Timeout: 30 * time.Second, Narrator: cf.narrator(lg), Log: lg}
 	srv := newServer(st, opts, lg, *enableFixes, cf.sinks())
 
 	httpSrv := &http.Server{

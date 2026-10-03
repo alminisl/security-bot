@@ -126,9 +126,11 @@ func Run(ctx context.Context, st *store.Store, opt Options) (*model.Scan, error)
 	sc.Facts["projects"] = fmt.Sprintf("%d", len(sc.Projects))
 	sc.Facts["mode"] = map[bool]string{true: "full", false: "quick"}[opt.Deep]
 
-	// The written report comes last: it summarises everything above.
+	// The written report comes last: it summarises everything above. A 4B
+	// model generating 300 tokens on CPU takes 90s or more, so the budget is
+	// generous — the scan itself is already complete and saved either way.
 	if opt.Narrator != nil {
-		rctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+		rctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
 		rep, err := opt.Narrator.Report(rctx, sc)
 		cancel()
 		if err != nil {
