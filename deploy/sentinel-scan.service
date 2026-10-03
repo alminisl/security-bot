@@ -1,0 +1,19 @@
+[Unit]
+Description=Sentinel security audit (one shot)
+Documentation=https://github.com/alminisl/security-bot
+After=docker.service network-online.target
+Wants=docker.service
+
+[Service]
+Type=oneshot
+# A full scan reaches out to registries and runs Trivy, so give it room.
+TimeoutStartSec=30min
+ExecStart=%h/Projects/security-bot/sentinel scan --notify
+# Exit code 2 means critical findings were reported, which is not a failure
+# of the unit itself.
+SuccessExitStatus=0 2
+Nice=10
+IOSchedulingClass=idle
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sentinel — Security Audit</title>
+<link rel="stylesheet" href="style.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🛡️</text></svg>">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <span class="shield" aria-hidden="true">🛡</span>
+    <div>
+      <h1>Sentinel</h1>
+      <p class="sub" id="subtitle">loading…</p>
+    </div>
+  </div>
+  <div class="topbar-right">
+    <div class="rating" id="rating" title="Overall rating out of 100">
+      <span class="rating-num" id="rating-num">—</span>
+      <span class="rating-label">overall</span>
+    </div>
+    <button id="btn-quick" class="btn">Quick scan</button>
+    <button id="btn-full" class="btn btn-primary">Full scan</button>
+    <button id="btn-theme" class="btn btn-icon" title="Toggle theme">◐</button>
+  </div>
+</header>
+
+<main>
+  <div id="banner" class="banner hidden"></div>
+
+  <!-- React now -->
+  <section id="alerts-section" class="alerts hidden">
+    <div class="alerts-head">
+      <h2><span class="dot dot-critical"></span> React now</h2>
+      <span class="alerts-count" id="alerts-count"></span>
+    </div>
+    <div id="alerts" class="alerts-list"></div>
+  </section>
+
+  <!-- Auditor's note -->
+  <section class="card report" id="report-card">
+    <div class="report-avatar" aria-hidden="true">🕵</div>
+    <div>
+      <h3>Auditor's note</h3>
+      <p id="report">No scan yet. Run a full scan to generate the first report.</p>
+    </div>
+  </section>
+
+  <!-- Three domains -->
+  <section class="domains">
+    <article class="card domain" id="domain-projects">
+      <header><h3>Projects</h3><span class="score" id="projects-score">—</span></header>
+      <p class="domain-sub" id="projects-sub">—</p>
+      <div class="bars" id="projects-bars"></div>
+    </article>
+    <article class="card domain" id="domain-machine">
+      <header><h3>Machine</h3><span class="score" id="machine-score">—</span></header>
+      <p class="domain-sub" id="machine-sub">—</p>
+      <div class="bars" id="machine-bars"></div>
+    </article>
+    <article class="card domain" id="domain-network">
+      <header><h3>Network</h3><span class="score" id="network-score">—</span></header>
+      <p class="domain-sub" id="network-sub">—</p>
+      <div class="bars" id="network-bars"></div>
+    </article>
+  </section>
+
+  <!-- Agents -->
+  <section class="card">
+    <div class="card-head">
+      <h3>Connected agents</h3>
+      <span class="muted" id="agents-sub"></span>
+    </div>
+    <div class="agents" id="agents"></div>
+  </section>
+
+  <!-- Suggestions -->
+  <section class="card" id="suggestions-card">
+    <div class="card-head">
+      <h3>Suggestions</h3>
+      <span class="muted">what to do next, highest value first</span>
+    </div>
+    <ol class="suggestions" id="suggestions"></ol>
+  </section>
+
+  <!-- Projects detail -->
+  <section class="card">
+    <div class="card-head">
+      <h3>Security by project</h3>
+      <span class="muted" id="projects-count"></span>
+    </div>
+    <div class="project-grid" id="project-grid"></div>
+  </section>
+
+  <!-- Findings -->
+  <section class="card">
+    <div class="card-head">
+      <h3>Findings</h3>
+      <div class="filters" id="filters">
+        <input type="search" id="search" placeholder="Filter by text…" autocomplete="off">
+        <select id="sev-filter">
+          <option value="">All severities</option>
+          <option value="critical">Critical</option>
+          <option value="high">High</option>
+          <option value="medium">Medium</option>
+          <option value="low">Low</option>
+          <option value="info">Info</option>
+        </select>
+        <select id="scope-filter"><option value="">All scopes</option></select>
+        <label class="check"><input type="checkbox" id="new-only"> New only</label>
+      </div>
+    </div>
+    <div id="findings" class="findings"></div>
+  </section>
+
+  <footer class="foot">
+    <span id="foot-info"></span>
+    <span class="muted">Audits are read-only unless started with <code>--enable-fixes</code>.</span>
+  </footer>
+</main>
+
+<script src="app.js"></script>
+</body>
+</html>

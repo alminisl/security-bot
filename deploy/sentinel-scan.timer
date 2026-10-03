@@ -1,0 +1,15 @@
+[Unit]
+Description=Daily Sentinel security audit
+Documentation=https://github.com/alminisl/security-bot
+
+[Timer]
+# Daily, after watchtower's 04:00 run so image updates are reflected.
+OnCalendar=*-*-* 05:30:00
+# Spread the load and avoid a thundering herd against registries.
+RandomizedDelaySec=15min
+# Catch up after the machine was asleep or off.
+Persistent=true
+Unit=sentinel-scan.service
+
+[Install]
+WantedBy=timers.target

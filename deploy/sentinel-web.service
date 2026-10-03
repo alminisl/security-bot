@@ -1,0 +1,17 @@
+[Unit]
+Description=Sentinel security dashboard
+Documentation=https://github.com/alminisl/security-bot
+After=docker.service network-online.target
+Wants=docker.service
+
+[Service]
+Type=simple
+# Bound to localhost by default. Reach it over Tailscale or a reverse proxy
+# rather than publishing it: the dashboard describes exactly where this
+# machine is weak.
+ExecStart=%h/Projects/security-bot/sentinel serve --addr 127.0.0.1:7777
+Restart=on-failure
+RestartSec=10s
+
+[Install]
+WantedBy=default.target
