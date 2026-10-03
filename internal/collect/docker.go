@@ -73,9 +73,16 @@ func Inventory(ctx context.Context, timeout time.Duration) ([]model.Container, e
 		return nil, err
 	}
 
-	// Resolve image digests in one more call so the update agent can compare
-	// against the registry without pulling anything.
-	digests := imageDigests(ctx, timeout)
+	// Resolve image digests from the images themselves, keyed by image ID.
+	// Matching on repository:tag misses anything pulled by digest, which
+	// `docker images` does not list under a repo name at all.
+	var imageIDs []string
+	for _, in := range insp {
+		if in.Image != "" {
+			imageIDs = append(imageIDs, in.Image)
+		}
+	}
+	digests := imageDigests(ctx, timeout, imageIDs)
 
 	var out []model.Container
 	for _, in := range insp {
@@ -97,7 +104,12 @@ func Inventory(ctx context.Context, timeout time.Duration) ([]model.Container, e
 		if in.State.Health != nil {
 			c.Health = in.State.Health.Status
 		}
-		c.ImageDigest = digests[in.Config.Image]
+		c.ImageDigest = digests[in.Image]
+		// A reference pinned by digest carries it directly; prefer that, since
+		// it is what the compose file actually asked for.
+		if i := strings.Index(in.Config.Image, "@sha256:"); i > 0 {
+			c.ImageDigest = in.Config.Image[i+1:]
+		}
 		c.Project = in.Config.Labels["com.docker.compose.project"]
 		if c.Project == "" {
 			c.Project = "standalone"
@@ -141,18 +153,34 @@ func Inventory(ctx context.Context, timeout time.Duration) ([]model.Container, e
 	return out, nil
 }
 
-// imageDigests maps image reference -> local repo digest.
-func imageDigests(ctx context.Context, timeout time.Duration) map[string]string {
+// imageDigests maps image ID -> repo digest, for the given image IDs. An image
+// built locally has no repo digest and is simply absent from the result.
+func imageDigests(ctx context.Context, timeout time.Duration, ids []string) map[string]string {
 	out := map[string]string{}
-	raw, err := sh(ctx, timeout, "docker", "images", "--digests",
-		"--format", "{{.Repository}}:{{.Tag}}\t{{.Digest}}")
-	if err != nil {
+	if len(ids) == 0 {
+		return out
+	}
+	seen := map[string]bool{}
+	var uniq []string
+	for _, id := range ids {
+		if !seen[id] {
+			seen[id] = true
+			uniq = append(uniq, id)
+		}
+	}
+	args := append([]string{"image", "inspect", "--format",
+		"{{.Id}}\t{{if .RepoDigests}}{{index .RepoDigests 0}}{{end}}"}, uniq...)
+	raw, err := sh(ctx, timeout, "docker", args...)
+	if err != nil && raw == "" {
 		return out
 	}
 	for _, l := range lines(raw) {
 		parts := strings.Split(l, "\t")
-		if len(parts) == 2 && strings.HasPrefix(parts[1], "sha256:") {
-			out[parts[0]] = parts[1]
+		if len(parts) != 2 {
+			continue
+		}
+		if i := strings.Index(parts[1], "@"); i > 0 {
+			out[parts[0]] = parts[1][i+1:]
 		}
 	}
 	return out

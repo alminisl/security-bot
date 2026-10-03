@@ -113,6 +113,10 @@ func (a VulnScanner) Run(ctx context.Context, env *Env) (Result, error) {
 		for _, c := range byImage[image] {
 			names = append(names, c.Name)
 		}
+		// "Fixable" in Trivy's sense means a patched package version exists —
+		// not that a newer image has been published. Those are different
+		// situations with different actions, and conflating them produces a
+		// critical finding the user cannot act on.
 		sev := model.SevHigh
 		if crit > 0 {
 			sev = model.SevCritical
@@ -121,17 +125,57 @@ func (a VulnScanner) Run(ctx context.Context, env *Env) (Result, error) {
 		if len(worst) > 0 {
 			detail += " Worst: " + strings.Join(worst, "; ") + "."
 		}
+		fix := "Pull the latest image — these have fixed package versions available upstream."
+		fixCmd := "docker compose -f " + dirOf(byImage[image][0]) + "/docker-compose.yml pull && " +
+			"docker compose -f " + dirOf(byImage[image][0]) + "/docker-compose.yml up -d"
+		rule := "image-cves"
+
+		switch {
+		case env.LocalBuild[image]:
+			// Built here, so the base image is the user's to update and this is
+			// the most actionable version of this finding.
+			rule = "image-cves-local"
+			detail += " This image is built on this machine, so its base image is yours to update — " +
+				"nothing upstream will fix it for you."
+			fix = "Rebuild this image on a current base image, then re-deploy."
+			fixCmd = "docker compose -f " + dirOf(byImage[image][0]) + "/docker-compose.yml build --pull && " +
+				"docker compose -f " + dirOf(byImage[image][0]) + "/docker-compose.yml up -d"
+
+		case env.UpdatesKnown && env.Unknown[image]:
+			// Could not be compared, so claiming either action would be a
+			// guess. Keep the severity and say what to try.
+			detail += " This image could not be compared against its registry, so whether a newer " +
+				"build exists is unknown."
+			fix = "Pull to check for a newer image; if it is already current, this is upstream's to patch."
+
+		case env.UpdatesKnown && !env.Behind[image]:
+			// Already on the newest published digest: pulling changes nothing.
+			// Still worth knowing, but it is not a critical you can clear today.
+			rule = "image-cves-upstream"
+			if sev == model.SevCritical {
+				sev = model.SevHigh
+			} else {
+				sev = model.SevMedium
+			}
+			detail += " This container is already running the newest published digest for its tag, " +
+				"so pulling will not help — the vulnerable packages are in the image as published. " +
+				"Either a newer major or minor tag exists, or this is upstream's to fix."
+			fix = "Check whether a newer tag is available (this one is current). If not, this is upstream's " +
+				"to patch — decide whether the exposure is acceptable or whether to replace the component."
+			fixCmd = "docker buildx imagetools inspect " + image + " --format '{{json .Manifest}}' | head -20"
+		}
+
 		r.Findings = append(r.Findings, model.NewFinding(model.Finding{
 			Agent:    a.Name(),
-			Rule:     "image-cves",
+			Rule:     rule,
 			Title:    fmt.Sprintf("%s has %d critical / %d high CVEs", image, crit, high),
 			Severity: sev,
 			Scope:    model.ScopeProject,
 			ScopeKey: byImage[image][0].Project,
 			Target:   image,
 			Detail:   detail,
-			Fix:      "Pull the latest image — all of these have fixed versions available upstream.",
-			FixCmd:   "trivy image --severity HIGH,CRITICAL --ignore-unfixed " + image,
+			Fix:      fix,
+			FixCmd:   fixCmd,
 			Refs:     []string{"https://avd.aquasec.com/"},
 		}))
 	}

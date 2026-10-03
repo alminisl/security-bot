@@ -23,6 +23,15 @@ type Env struct {
 	Timeout    time.Duration
 	DeepScan   bool      // allow slow work (registry calls, CVE scans)
 	Since      time.Time // start of the previous scan; zero on the first run
+
+	// Filled in by UpdateWatcher and read by VulnScanner. Whether a newer
+	// image exists changes what a CVE finding means: if you are already on the
+	// newest published digest, pulling cannot help and the severity should not
+	// imply that it can.
+	UpdatesKnown bool
+	Behind       map[string]bool // image ref -> a newer digest is published
+	LocalBuild   map[string]bool // image ref -> not in any registry, built here
+	Unknown      map[string]bool // image ref -> could not be compared
 }
 
 // Result is what an agent reports back. Beyond findings, an agent may return

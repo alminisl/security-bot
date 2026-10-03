@@ -38,6 +38,12 @@ func (a UpdateWatcher) Run(ctx context.Context, env *Env) (Result, error) {
 		byImage[c.Image] = append(byImage[c.Image], c)
 	}
 
+	// Record what we learn for the vulnerability scanner, which runs after us.
+	env.Behind = map[string]bool{}
+	env.LocalBuild = map[string]bool{}
+	env.Unknown = map[string]bool{}
+	defer func() { env.UpdatesKnown = true }()
+
 	type res struct {
 		image  string
 		remote string
@@ -49,10 +55,7 @@ func (a UpdateWatcher) Run(ctx context.Context, env *Env) (Result, error) {
 		wg      sync.WaitGroup
 		sem     = make(chan struct{}, 4) // bound registry concurrency
 	)
-	for image, cs := range byImage {
-		if cs[0].ImageDigest == "" {
-			continue // locally built image, nothing to compare against
-		}
+	for image := range byImage {
 		if !strings.Contains(image, ":") {
 			continue
 		}
@@ -70,19 +73,35 @@ func (a UpdateWatcher) Run(ctx context.Context, env *Env) (Result, error) {
 	}
 	wg.Wait()
 
-	behind, failed := 0, 0
+	behind, failed, local := 0, 0, 0
 	for _, got := range results {
 		cs := byImage[got.image]
 		r.Checks++
+		localDigest := cs[0].ImageDigest
+
 		if got.err != nil || !strings.HasPrefix(got.remote, "sha256:") {
-			failed++
+			// No registry copy and no local digest means this image was built
+			// here. A lookup failure on an image that does have a digest is
+			// just a failed lookup.
+			if localDigest == "" && isNotFound(got.err) {
+				env.LocalBuild[got.image] = true
+				local++
+			} else {
+				env.Unknown[got.image] = true
+				failed++
+			}
 			continue
 		}
-		local := cs[0].ImageDigest
-		if local == got.remote {
+		if localDigest == "" {
+			// Exists upstream but we have nothing to compare against.
+			env.Unknown[got.image] = true
+			continue
+		}
+		if localDigest == got.remote {
 			continue
 		}
 		behind++
+		env.Behind[got.image] = true
 		// One finding per image, listing the containers affected.
 		var names []string
 		for _, c := range cs {
@@ -97,7 +116,7 @@ func (a UpdateWatcher) Run(ctx context.Context, env *Env) (Result, error) {
 		sev := model.SevMedium
 		detail := fmt.Sprintf("Running %s, registry has %s. Affects: %s. "+
 			"Image updates are how container CVE fixes actually reach you.",
-			short(local), short(got.remote), strings.Join(names, ", "))
+			short(localDigest), short(got.remote), strings.Join(names, ", "))
 		if managed && wtPresent {
 			sev = model.SevLow
 			detail += " Watchtower manages this container and should pull it on its next scheduled run."
@@ -116,11 +135,8 @@ func (a UpdateWatcher) Run(ctx context.Context, env *Env) (Result, error) {
 		}))
 	}
 
-	if failed > 0 {
-		r.Message = fmt.Sprintf("%d images behind, %d unreachable", behind, failed)
-	} else {
-		r.Message = fmt.Sprintf("%d of %d images behind", behind, len(results))
-	}
+	r.Message = fmt.Sprintf("%d of %d images behind, %d built here, %d unreachable",
+		behind, len(results), local, failed)
 	if !wtPresent && behind > 0 {
 		r.Suggestions = append(r.Suggestions, model.NewSuggestion(model.Suggestion{
 			Title:    "Automate image updates",
@@ -160,6 +176,22 @@ func watchtowerScope(ctx context.Context, timeout time.Duration) (all bool, pres
 		}
 	}
 	return true, true
+}
+
+// isNotFound distinguishes "this image does not exist in a registry" from a
+// transient failure, so a rate limit is never reported as a local build.
+func isNotFound(err error) bool {
+	if err == nil {
+		return false
+	}
+	m := strings.ToLower(err.Error())
+	for _, s := range []string{"not found", "pull access denied", "does not exist",
+		"repository name not known", "unauthorized", "no such host", "manifest unknown"} {
+		if strings.Contains(m, s) {
+			return true
+		}
+	}
+	return false
 }
 
 func short(d string) string {
